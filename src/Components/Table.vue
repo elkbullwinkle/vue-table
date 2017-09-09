@@ -4,15 +4,34 @@
         <table class="table is-fullwidth is-striped">
             <thead>
             <tr>
-                <th v-for="field in fields" v-html="field.title"></th>
+                <elk-table-th v-for="field in fields"
+                              :field="field"
+                              :active-sort-column="sortColumn"
+                              :active-sort-direction="sortDirection"
+                              @update:active-sort-column="val => sortColumn = val"
+                              @update:active-sort-direction="val => sortDirection = val"
+                              @sort="performSort"
+                ></elk-table-th>
             </tr>
             </thead>
             <tbody>
-            <tr v-for="item in dataSet.data" style="cursor: pointer">
-                <td v-for="field in fields" v-html="getField(item, field.field)" @click="clickFired(item, field)">
-                </td>
-            </tr>
-            <tr v-if="!dataSet.data.length && !isLoading">
+                <elk-table-row v-for="item in getDataset"
+                               :fields="fields"
+                               :item="item"
+                               :row-click="rowClick"
+                               @click-fired="clickFired">
+                    <template v-for="field in fields"
+                              :slot="field.title"
+                              scope="props">
+                        <slot :name="field.title"
+                              :field="props.field"
+                              :item="props.item"
+                              :content="props.content">
+                            <div v-html="props.content"></div>
+                        </slot>
+                    </template>
+                </elk-table-row>
+            <tr v-if="!dataPresent">
                 <td :colspan="fields.length" class="text-center">
                     <slot name="placeholder">
                         <h4>
@@ -36,6 +55,22 @@
     import axios from 'axios';
     import Pagination from './Pagination.vue'
     import Preloader from './Preloader.vue'
+    import TableTh from './TableTh.vue'
+    import TableRow from './TableRow.vue'
+
+    let defaultConfig = {
+
+        mergeDefaultHeaders : true,
+
+        headers : {
+            'X-Requested-With' : 'XMLHttpRequest'
+        },
+
+        dataAttribute : 'data',
+        sortAttribute : 'orderBy',
+        sortDirectionAttribute : 'orderDirection'
+
+    }
 
 
     export default {
@@ -43,15 +78,24 @@
         components: {
             'elk-pagination' : Pagination,
             'elk-preloader' : Preloader,
+            'elk-table-th' : TableTh,
+            'elk-table-row' : TableRow,
         },
 
         props : {
             name : {
                 required : true,
+                type : String,
             },
 
             fields : {
                 required : true,
+                type : Array,
+            },
+
+            'active-sort-column' : {
+                type : String,
+                default : '',
             },
 
             data : {
@@ -86,18 +130,25 @@
                 default : true,
             },
 
-            'on-row-click' : {
-                default : null,
+            'row-click' : {
+                type : Boolean,
+                default : false,
+            },
+
+            config : {
+                type : Object,
+                default : () => {{}}
             }
         },
 
         data() {
             return {
-                dataSet : {
-                    data : [],
-                },
+                dataset : {},
 
                 manageData : false,
+
+                sortColumn : '',
+                sortDirection : true,
 
                 isLoading : false,
             }
@@ -107,49 +158,84 @@
 
             displayPagination() {
                 return this.manageData && this.dataSet.total > 0 && this.dataSet.last_page > 1
-            }
+            },
+
+            dataPresent() {
+                return this.dataSet.data.length && !this.isLoading
+            },
+
+            hasSortableColumns() {
+                return this.fields.some(field => typeof field.sortable === 'string')
+            },
+
+            sortableColumns() {
+                return this.fields.filter(field => typeof field.sortable === 'string')
+            },
+
+            remoteSource() {
+                return this.url !== null ? this.url : false
+            },
+
+            getConfig() {
+                return Object.assign(defaultConfig, this.config)
+            },
+
+            getHeaders() {
+
+                let windowHeaders = {}
+
+                if (this.getConfig.mergeDefaultHeaders) {
+                    try {
+                        windowHeaders = window.axios.defaults.headers.common
+                    } catch(e) {}
+                }
+
+                return Object.assign(windowHeaders, this.getConfig)
+            },
 
         },
 
         created() {
 
-            if (this.url !== null)
+            let url = this.remoteSource
+
+            if (url)
             {
-                this.manageData = true
+                this.initSort()
+                    .initAxios()
+                    .fetchData()
 
-                this.$io = axios.create({
-                    baseURL: this.url,
-                    headers: {
-                        'X-Requested-With' : 'XMLHttpRequest'
-                    },
-                    params : this.attributes,
-                })
-
-                this.fetchData()
             }
 
         },
 
         methods : {
-            getField(item, field) {
 
-                if (typeof field === "function")
-                {
-                    return field(item)
-                }
+            initSort() {
+                if (this.hasSortableColumns) {
+                    let activeColumn = this.sortableColumns.find(column => column.sortable == this.activeSortColumn)
 
-                if (Array.isArray(field))
-                {
-                    const output = []
-                    field.forEach(arg =>
+                    if (typeof activeColumn === 'undefined')
                     {
-                        output.push(eval("item." + arg))
-                    })
+                        activeColumn = this.sortableColumns[0]
+                    }
 
-                    return output.join(' ')
+                    this.sortColumn = activeColumn.sortable
                 }
 
-                return eval("item." + field)
+                return this
+            },
+
+            initAxios() {
+                this.manageData = true
+
+                this.$io = axios.create({
+                    baseURL: this.url,
+                    headers: this.getHeaders,
+                    params : this.attributes,
+                })
+
+                return this
             },
 
             paginate(page = 1) {
@@ -158,17 +244,13 @@
                 this.fetchData('', page)
             },
 
-            render(dataSet) {
+            clickFired(...args) {
 
-                if (this.paginated)
-                {
-                    this.dataSet = dataSet
-                }
-                else
-                {
-                    console.log('wrong')
-                    this.dataSet.data = dataSet
-                }
+                this.$emit('click-fired', ...args)
+
+            },
+
+            performSort(column, direction) {
 
             },
 
@@ -184,7 +266,7 @@
                 })
                     .then((response) => {
 
-                        this.render(response.data)
+                        this.setDataset(response.data)
 
                         this.isLoading = false
                     })
@@ -194,29 +276,26 @@
                     })
             },
 
-            clickFired(item, field) {
+            setDataset(data) {
 
-                if (field.disableClick)
-                {
-                    return false;
+                if (this.paginated) {
+                    this.datset = this.getData(data)
+                } else {
+                    this.dataSet.data = dataSet
                 }
 
-                if (typeof field.onClick === "function")
-                {
-                    field.onClick(item, field);
-                    return;
-                }
-
-                if (typeof this.onRowClick === "function")
-                {
-                    this.$emit('row-clicked', item, field)
-
-                    this.onRowClick(item, field);
-                    return;
-                }
-
-                console.log('No click events defined', item);
             },
+
+            getData(dataset) {
+                let dataAttribute = this.getConfig.dataAttribute
+
+                if (dataAttribute == '') {
+                    return dataset
+                }
+                else {
+                    return dataset[dataAttribute]
+                }
+            }
 
         },
 
