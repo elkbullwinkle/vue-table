@@ -1,6 +1,6 @@
 <template>
     <td @click="clickFired">
-        <slot :name="field.title" :field="field" :item="item" :content="content">
+        <slot :name="column.title" :column="column" :item="item" :content="content">
             <template v-html="content"></template>
         </slot>
     </td>
@@ -11,7 +11,7 @@
     export default {
 
         props : {
-            field : {
+            column : {
                 required : true,
             },
 
@@ -35,25 +35,25 @@
 
             content() {
 
-                const field = this.field
+                const column = this.column
 
-                if (typeof field === "function")
+                if (typeof column === "function")
                 {
-                    return field(item)
+                    return column(item)
                 }
 
-                if (Array.isArray(field.field))
+                if (Array.isArray(column.field))
                 {
                     const output = []
-                    field.forEach(arg =>
+                    column.forEach(arg =>
                     {
-                        output.push(this.evaluateField(arg))
+                        output.push(this.evaluateColumn(arg))
                     })
 
                     return output.join(' ')
                 }
 
-                return this.evaluateField(field.field)
+                return this.evaluateColumn(column.field)
             }
         },
 
@@ -61,21 +61,21 @@
 
             clickFired() {
 
-                if(this.field.disableClick)
+                if(this.column.disableClick)
                 {
                     return
                 }
 
                 if (this.rowClick)
                 {
-                    this.$emit('click-fired', 'row', this.field, this.item);
+                    this.$emit('click-fired', 'row', this.column, this.item);
 
                     return
                 }
 
-                if(typeof this.field.click === "string")
+                if(typeof this.column.click === "string")
                 {
-                    this.$emit('click-fired', this.field.click, this.field, this.item);
+                    this.$emit('click-fired', this.column.click, this.column, this.item);
 
                     return
                 }
@@ -83,7 +83,7 @@
 
             },
 
-            evaluateField(argument) {
+            evaluateColumn(argument) {
 
                 let output = ''
 
@@ -99,14 +99,5 @@
             }
 
         },
-
-        watch : {
-        },
-
-        mounted() {
-
-            //console.log('Table column mounted')
-
-        }
     }
 </script>

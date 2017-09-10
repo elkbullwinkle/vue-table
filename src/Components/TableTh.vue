@@ -1,5 +1,5 @@
 <template>
-    <th v-html="field.title"
+    <th v-html="column.title"
         :class="sortClasses"
         @click="sort()"
     ></th>
@@ -10,7 +10,7 @@
     export default {
 
         props : {
-            field : {
+            column : {
                 required : true,
                 default : () => {{}},
             },
@@ -34,11 +34,11 @@
 
         computed : {
             isSortable() {
-                return typeof this.field.sortable === 'string'
+                return typeof this.column.sortable === 'string'
             },
 
             isActiveSortColumn() {
-                return this.isSortable && this.field.sortable == this.activeSortColumn
+                return this.isSortable && this.column.sortable == this.activeSortColumn
             },
 
             sortClasses() {
@@ -63,12 +63,14 @@
                     }
                     else
                     {
-                        this.$emit('update:active-sort-column', this.field.sortable)
+                        this.$emit('update:active-sort-column', this.column.sortable)
 
                         if (!this.activeSortDirection) {
                             this.$emit('update:active-sort-direction', true)
                         }
                     }
+
+                    this.$emit('sort', this.column.sortable, this.activeSortDirection)
                 }
             }
 

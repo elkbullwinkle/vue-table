@@ -1,16 +1,14 @@
 <template>
     <tr>
-        <elk-table-col v-for="field in fields" :field="field" :item="item" @click-fired="clickFired" :row-click="rowClick">
-            <template :slot="field.title" scope="props">
-                <slot :name="field.title" :field="props.field" :item="props.item" :content="props.content"></slot>
+        <elk-table-col v-for="column in columns" :column="column" :item="item" @click-fired="clickFired" :row-click="rowClick">
+            <template :slot="column.title" scope="props">
+                <slot :name="column.title" :column="props.column" :item="props.item" :content="props.content"></slot>
             </template>
         </elk-table-col>
     </tr>
 </template>
 
 <script>
-
-
     import TableCol from './TableCol.vue'
 
     export default {
@@ -20,7 +18,7 @@
         },
 
         props : {
-            fields : {
+            columns : {
                 required : true,
                 type : Array,
             },
@@ -36,12 +34,6 @@
             }
         },
 
-        data() {
-            return {
-                
-            }
-        },
-
         methods: {
             clickFired(...args) {
 
@@ -49,11 +41,5 @@
 
             }
         },
-
-        mounted() {
-
-            console.log('TH mounted')
-
-        }
     }
 </script>

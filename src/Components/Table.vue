@@ -4,8 +4,8 @@
         <table class="table is-fullwidth is-striped">
             <thead>
             <tr>
-                <elk-table-th v-for="field in fields"
-                              :field="field"
+                <elk-table-th v-for="column in columns"
+                              :column="column"
                               :active-sort-column="sortColumn"
                               :active-sort-direction="sortDirection"
                               @update:active-sort-column="val => sortColumn = val"
@@ -15,16 +15,16 @@
             </tr>
             </thead>
             <tbody>
-                <elk-table-row v-for="item in getDataset"
-                               :fields="fields"
+                <elk-table-row v-for="item in dataset"
+                               :columns="columns"
                                :item="item"
                                :row-click="rowClick"
                                @click-fired="clickFired">
-                    <template v-for="field in fields"
-                              :slot="field.title"
+                    <template v-for="column in columns"
+                              :slot="column.title"
                               scope="props">
-                        <slot :name="field.title"
-                              :field="props.field"
+                        <slot :name="column.title"
+                              :column="props.column"
                               :item="props.item"
                               :content="props.content">
                             <div v-html="props.content"></div>
@@ -32,7 +32,7 @@
                     </template>
                 </elk-table-row>
             <tr v-if="!dataPresent">
-                <td :colspan="fields.length" class="text-center">
+                <td :colspan="columns.length" class="text-center">
                     <slot name="placeholder">
                         <h4>
                             No items found
@@ -43,8 +43,8 @@
             </tbody>
         </table>
         <elk-pagination v-if="displayPagination"
-                        :page.number="dataSet.current_page"
-                        :last-page.number="dataSet.last_page"
+                        :page.number="pagination.currentPage"
+                        :last-page.number="pagination.lastPage"
                         @pageSelected="paginate"
         ></elk-pagination>
     </div>
@@ -52,11 +52,12 @@
 
 <script>
 
-    import axios from 'axios';
     import Pagination from './Pagination.vue'
     import Preloader from './Preloader.vue'
     import TableTh from './TableTh.vue'
     import TableRow from './TableRow.vue'
+
+    import DataAdapter from './../DataAdapter.js'
 
     let defaultConfig = {
 
@@ -67,11 +68,31 @@
         },
 
         dataAttribute : 'data',
+        pageAttribute : 'page',
         sortAttribute : 'orderBy',
-        sortDirectionAttribute : 'orderDirection'
+        sortDirectionAttribute : 'orderDirection',
+        currentPageAttribute : 'current_page',
+        lastPageAttribute : 'last_page',
+        queryAsJson : false,
+        queryAsDataOnPost : false,
+        queryAttribute : 'query',
+        requestType : 'get'
 
     }
 
+    let adapterConfigAttributes = [
+        'mergeDefaultHeaders',
+        'headers',
+        'dataAttribute',
+        'pageAttribute',
+        'sortAttribute',
+        'sortDirectionAttribute',
+        'currentPageAttribute',
+        'lastPageAttribute',
+        'queryAsJson',
+        'queryAttribute',
+        'requestType',
+    ]
 
     export default {
 
@@ -88,7 +109,7 @@
                 type : String,
             },
 
-            fields : {
+            columns : {
                 required : true,
                 type : Array,
             },
@@ -117,17 +138,12 @@
 
             attributes : {
                 type : Object,
-                default: () => {},
+                default: () => { return {}},
             },
 
             filters : {
                 type : Object,
-                default: () => {},
-            },
-
-            'watch-attributes' : {
-                type : Boolean,
-                default : true,
+                default: () => {return {}},
             },
 
             'row-click' : {
@@ -137,13 +153,19 @@
 
             config : {
                 type : Object,
-                default : () => {{}}
+                default : () => { return {}}
             }
         },
 
         data() {
             return {
                 dataset : {},
+                pagination : {
+                    currentPage : 1,
+                    lastPage : 1,
+                },
+
+                adapter : null,
 
                 manageData : false,
 
@@ -157,19 +179,23 @@
         computed : {
 
             displayPagination() {
-                return this.manageData && this.dataSet.total > 0 && this.dataSet.last_page > 1
+                return this.manageData && this.dataset.length > 0 && this.pagination.lastPage > 1
+            },
+
+            shouldPaginate() {
+                return this.manageData && this.paginated
             },
 
             dataPresent() {
-                return this.dataSet.data.length && !this.isLoading
+                return this.dataset.length && !this.isLoading
             },
 
             hasSortableColumns() {
-                return this.fields.some(field => typeof field.sortable === 'string')
+                return this.columns.some(column => typeof column.sortable === 'string')
             },
 
             sortableColumns() {
-                return this.fields.filter(field => typeof field.sortable === 'string')
+                return this.columns.filter(column => typeof column.sortable === 'string')
             },
 
             remoteSource() {
@@ -180,17 +206,16 @@
                 return Object.assign(defaultConfig, this.config)
             },
 
-            getHeaders() {
+            getAdapterConfig() {
 
-                let windowHeaders = {}
+                const config = this.getConfig
 
-                if (this.getConfig.mergeDefaultHeaders) {
-                    try {
-                        windowHeaders = window.axios.defaults.headers.common
-                    } catch(e) {}
-                }
-
-                return Object.assign(windowHeaders, this.getConfig)
+                return Object.keys(config)
+                    .filter(key => adapterConfigAttributes.includes(key))
+                    .reduce((obj, key) => {
+                        obj[key] = config[key]
+                        return obj
+                    }, {})
             },
 
         },
@@ -202,8 +227,8 @@
             if (url)
             {
                 this.initSort()
-                    .initAxios()
-                    .fetchData()
+                    .initDataAdapter()
+                    .fetchData(this.shouldPaginate ? 1 : false)
 
             }
 
@@ -226,14 +251,16 @@
                 return this
             },
 
-            initAxios() {
+            initDataAdapter() {
                 this.manageData = true
 
-                this.$io = axios.create({
-                    baseURL: this.url,
-                    headers: this.getHeaders,
-                    params : this.attributes,
-                })
+                this.pagination.currentPage = this.shouldPaginate ? 1 : true
+
+                this.adapter = new DataAdapter(
+                    this.remoteSource,
+                    this.attributes,
+                    this.getAdapterConfig
+                ).setSort(this.sortColumn, this.sortDirection)
 
                 return this
             },
@@ -241,7 +268,9 @@
             paginate(page = 1) {
                 console.log('Going to page ' + page)
 
-                this.fetchData('', page)
+                this.pagination.currentPage = page
+
+                this.fetchData()
             },
 
             clickFired(...args) {
@@ -251,51 +280,40 @@
             },
 
             performSort(column, direction) {
+                this.adapter
+                    .setSort(column, direction)
 
+                this.fetchData()
             },
 
-            fetchData(url = '', page = 1) {
+            fetchData() {
+
+                let page = this.shouldPaginate ? this.pagination.currentPage : false
+
+                console.log('Fetching data')
 
                 this.isLoading = true;
 
-                this.$io.get(url, {
-                    params:
-                        Object.assign({
-                            page
-                        }, this.filters)
-                })
-                    .then((response) => {
+                this.adapter
+                    .setAttributes(this.attributes)
+                    .setFilters(this.filters)
+                    .fetchData(page)
+                    .then(({dataset, pagination}) => {
+                        this.isLoading = false
+                        this.dataset = dataset
 
-                        this.setDataset(response.data)
-
+                        if (page) {
+                            this.pagination = pagination
+                        }
+                    })
+                    .catch(error => {
+                        alert('Something went wrong')
+                        console.log(error)
                         this.isLoading = false
                     })
-                    .catch((response) => {
-                        console.warn('Error fetching data')
-                        this.isLoading = false
-                    })
-            },
 
-            setDataset(data) {
-
-                if (this.paginated) {
-                    this.datset = this.getData(data)
-                } else {
-                    this.dataSet.data = dataSet
-                }
 
             },
-
-            getData(dataset) {
-                let dataAttribute = this.getConfig.dataAttribute
-
-                if (dataAttribute == '') {
-                    return dataset
-                }
-                else {
-                    return dataset[dataAttribute]
-                }
-            }
 
         },
 
@@ -309,20 +327,21 @@
 
             },
 
-            filters() {
+            filters : {
+                handler : function (val) {
+                    if (this.manageData) {
+                        this.pagination.currentPage = 1
+                        this.fetchData()
+                    }
+                },
 
-                console.log('Watching filters')
-
-                if (this.watchAttributes)
-                {
-                    console.log('Attributes changed')
-
-                    this.fetchData('', 1)
-                }
+                deep : true,
             }
         },
 
         mounted() {
+            console.log('Mounted')
+
             if (this.data.length)
             {
                 this.dataSet.data = this.data
