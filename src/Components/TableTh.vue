@@ -57,8 +57,12 @@
             sort() {
                 if (this.isSortable)
                 {
+
+                    let sortDirection = this.activeSortDirection
+
                     if (this.isActiveSortColumn)
                     {
+                        sortDirection = !sortDirection
                         this.$emit('update:active-sort-direction', !this.activeSortDirection)
                     }
                     else
@@ -66,11 +70,12 @@
                         this.$emit('update:active-sort-column', this.column.sortable)
 
                         if (!this.activeSortDirection) {
+                            sortDirection = true
                             this.$emit('update:active-sort-direction', true)
                         }
                     }
 
-                    this.$emit('sort', this.column.sortable, this.activeSortDirection)
+                    this.$emit('sort', this.column.sortable, sortDirection)
                 }
             }
 

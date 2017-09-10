@@ -69,8 +69,8 @@
 
         dataAttribute : 'data',
         pageAttribute : 'page',
-        sortAttribute : 'orderBy',
-        sortDirectionAttribute : 'orderDirection',
+        sortAttribute : 'order_by',
+        sortDirectionAttribute : 'order_direction',
         currentPageAttribute : 'current_page',
         lastPageAttribute : 'last_page',
         queryAsJson : false,
